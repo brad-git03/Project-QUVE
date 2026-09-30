@@ -8,6 +8,10 @@
 - Private lineup submission: the server broadcasts readiness, but never broadcasts either player's lineup.
 - Early arena start when both players lock in; automatic start when the deadline expires.
 - Disconnect handling that returns the remaining player to the lobby.
+- Live arena turn locking: each player sees whether the rival is still choosing
+  or has resolved their turn.
+- A shared server resolution packet and deterministic combat seed, so both
+  clients play the same actions, critical hits, dodges, damage, and round.
 
 ## Recommended prototype deployment: Render
 
@@ -40,8 +44,9 @@ Before ranked or economy-backed PvP, add:
   horizontal scaling.
 - PostgreSQL for accounts, inventories, match records, and QVC transactions.
 - Authenticated sessions; names currently identify guests only.
-- Server-authoritative combat actions and validation. The current battle after
-  lineup sync still runs the existing local combat prototype on each client.
+- Move damage calculation fully onto the server. The current prototype uses a
+  server-coordinated deterministic simulation; production ranked play should
+  broadcast authoritative result events instead of trusting client simulation.
 - Reconnection tokens and a grace window before forfeiting a disconnected duel.
 - Rate limits, structured logs, error monitoring, and match-state tests.
 

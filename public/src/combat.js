@@ -66,7 +66,11 @@ export function sortActionQueue(queuedActions) {
       return b.caster.baseSpeed - a.caster.baseSpeed;
     }
     // 4. Team Position (Front > Mid > Back)
-    return a.caster.position - b.caster.position;
+    const positionOrder = a.caster.position - b.caster.position;
+    if (positionOrder !== 0) return positionOrder;
+    // Network turns carry a stable host/guest order so equal-speed actions
+    // resolve identically on both clients regardless of local perspective.
+    return (a.syncOrder ?? 0) - (b.syncOrder ?? 0);
   });
 }
 

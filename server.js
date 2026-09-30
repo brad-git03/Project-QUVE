@@ -46,7 +46,22 @@ function startArena(room) {
   clearTimeout(room.timer);
   room.phase = 'arena';
   room.deadline = null;
+  room.battle = { round: 1, submissions: new Map(), completed: new Set(), resolving: false };
   emitRoom(room);
+  emitBattleState(room);
+}
+
+function battleState(room) {
+  const battle = room.battle || { round: 1, submissions: new Map(), resolving: false };
+  return {
+    round: battle.round,
+    resolving: battle.resolving,
+    players: room.players.map(player => ({ id: player.id, name: player.name, submitted: battle.submissions.has(player.id) }))
+  };
+}
+
+function emitBattleState(room) {
+  io.to(room.code).emit('battle:turnState', battleState(room));
 }
 
 io.on('connection', socket => {
@@ -87,6 +102,46 @@ io.on('connection', socket => {
     player.lineup = Array.isArray(lineup) ? lineup.slice(0, 3) : [];
     emitRoom(room);
     if (room.players.length === 2 && room.players.every(item => item.ready)) startArena(room);
+  });
+
+  socket.on('battle:sync', () => {
+    const room = rooms.get(socket.data.roomCode);
+    if (room?.phase === 'arena') socket.emit('battle:turnState', battleState(room));
+  });
+
+  socket.on('battle:submit', ({ round, actions } = {}, reply = () => {}) => {
+    const room = rooms.get(socket.data.roomCode);
+    const battle = room?.battle;
+    if (!room || room.phase !== 'arena' || !battle || battle.resolving) return reply({ ok: false, error: 'Turn is not accepting actions.' });
+    if (round !== battle.round || battle.submissions.has(socket.id)) return reply({ ok: false, error: 'This turn was already submitted or has advanced.' });
+    const cleanActions = Array.isArray(actions) ? actions.slice(0, 10).map(action => ({
+      cardId: String(action.cardId || '').slice(0, 40),
+      casterPosition: Math.max(1, Math.min(3, Number(action.casterPosition) || 1)),
+      targetPosition: Math.max(1, Math.min(3, Number(action.targetPosition) || 1))
+    })) : [];
+    battle.submissions.set(socket.id, cleanActions);
+    reply({ ok: true });
+    emitBattleState(room);
+    if (room.players.length === 2 && room.players.every(player => battle.submissions.has(player.id))) {
+      battle.resolving = true;
+      const turns = room.players.map((player, index) => ({ playerId: player.id, playerIndex: index, actions: battle.submissions.get(player.id) }));
+      io.to(room.code).emit('battle:resolve', { round: battle.round, seed: Math.floor(Math.random() * 2147483646) + 1, turns });
+      emitBattleState(room);
+    }
+  });
+
+  socket.on('battle:complete', ({ round } = {}) => {
+    const room = rooms.get(socket.data.roomCode);
+    const battle = room?.battle;
+    if (!battle || !battle.resolving || round !== battle.round) return;
+    battle.completed.add(socket.id);
+    if (room.players.length === 2 && room.players.every(player => battle.completed.has(player.id))) {
+      battle.round += 1;
+      battle.submissions.clear();
+      battle.completed.clear();
+      battle.resolving = false;
+      emitBattleState(room);
+    }
   });
 
   socket.on('disconnect', () => {

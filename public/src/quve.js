@@ -152,3 +152,16 @@ export function createEnemyTeam() {
     }, false, 3)
   ];
 }
+
+// PvP uses an equivalent mirrored squad so both browsers simulate the same
+// stats from opposite viewpoints. IDs are remapped for renderer separation.
+export function createMirroredEnemyTeam() {
+  return createStarterPlayerTeam().map((quve, index) => new Quve(
+    `e${index + 1}`,
+    quve.name,
+    quve.baseType,
+    { ...quve.parts },
+    false,
+    quve.position
+  ));
+}

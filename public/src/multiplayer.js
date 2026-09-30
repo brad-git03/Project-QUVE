@@ -16,6 +16,9 @@ let room = null;
 let selected = [];
 let timerHandle = null;
 let gameStarted = false;
+let game = null;
+let pendingBattleState = null;
+let pendingResolution = null;
 let playerName = sessionStorage.getItem('quve-player-name') || '';
 
 const $ = id => document.getElementById(id);
@@ -115,7 +118,19 @@ async function enterArena() {
   await new Promise(resolve => setTimeout(resolve, 2100));
   $('arenaLoader').classList.add('hidden');
   showScreen('arenaScreen');
-  new GameApp();
+  game = new GameApp({
+    multiplayer: {
+      playerId: socket.id,
+      submitTurn: (round, actions) => new Promise(resolve => socket.emit('battle:submit', { round, actions }, resolve)),
+      completeTurn: round => socket.emit('battle:complete', { round })
+    }
+  });
+  if (pendingBattleState) game.applyBattleState(pendingBattleState);
+  if (pendingResolution) {
+    game.resolveSyncedTurn(pendingResolution);
+    pendingResolution = null;
+  }
+  socket.emit('battle:sync');
 }
 
 $('playerName').value = playerName;
@@ -155,6 +170,14 @@ socket.on('connect', () => { $('networkStatus').textContent = 'ONLINE / ' + sock
 socket.on('disconnect', () => { $('networkStatus').textContent = 'RECONNECTING'; });
 socket.on('room:state', updateRoom);
 socket.on('room:notice', message => error(message));
+socket.on('battle:turnState', state => {
+  pendingBattleState = state;
+  if (game) game.applyBattleState(state);
+});
+socket.on('battle:resolve', packet => {
+  if (game) game.resolveSyncedTurn(packet);
+  else pendingResolution = packet;
+});
 socket.on('invite:accepted', ({ name }) => {
   $('acceptedName').textContent = name;
   $('acceptModal').classList.remove('hidden');

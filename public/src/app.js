@@ -1,12 +1,13 @@
 // Project Quve - Main Game Application Controller
 
-import { createStarterPlayerTeam, createEnemyTeam } from './quve.js';
+import { createStarterPlayerTeam, createEnemyTeam, createMirroredEnemyTeam } from './quve.js';
 import { CARDS } from './cards.js';
 import { activateActionShield, executeCardAction, sortActionQueue, getClosestTarget } from './combat.js';
 import { BattleRenderer } from './renderer.js';
 
 export class GameApp {
-  constructor() {
+  constructor(options = {}) {
+    this.multiplayer = options.multiplayer || null;
     this.canvas = document.getElementById('battleCanvas');
     this.renderer = new BattleRenderer(this.canvas);
 
@@ -19,7 +20,7 @@ export class GameApp {
 
     // Teams
     this.playerTeam = createStarterPlayerTeam();
-    this.enemyTeam = createEnemyTeam();
+    this.enemyTeam = this.multiplayer ? createMirroredEnemyTeam() : createEnemyTeam();
 
     // Cards & Deck
     this.drawDeck = [];
@@ -221,10 +222,54 @@ export class GameApp {
 
   async endTurnAndResolve() {
     if (this.state !== 'SELECTION') return;
+
+    if (this.multiplayer) {
+      this.state = 'WAITING_FOR_RIVAL';
+      const actions = this.queuedActions.map(action => ({
+        cardId: action.card.id,
+        casterPosition: action.caster.position,
+        targetPosition: action.target?.position || 1
+      }));
+      this.logMessage('🔒 Your actions are locked. Waiting for your rival to resolve turn...');
+      this.setOpponentTurnState(false, false, true);
+      this.updateHUD();
+      const response = await this.multiplayer.submitTurn(this.round, actions);
+      if (!response?.ok) {
+        this.state = 'SELECTION';
+        this.logMessage(`⚠️ ${response?.error || 'Turn submission failed. Try again.'}`);
+        this.updateHUD();
+      }
+      return;
+    }
+
     this.state = 'RESOLVING';
 
     const enemyActions = this.generateEnemyActions();
     const allActions = [...this.queuedActions, ...enemyActions];
+
+    await this.resolveActions(allActions);
+  }
+
+  async resolveSyncedTurn(packet) {
+    if (!this.multiplayer || packet.round !== this.round || this.state === 'RESOLVING') return;
+    this.state = 'RESOLVING';
+    const localTurn = packet.turns.find(turn => turn.playerId === this.multiplayer.playerId);
+    const remoteTurn = packet.turns.find(turn => turn.playerId !== this.multiplayer.playerId);
+    const ownOrder = localTurn?.playerIndex ?? 0;
+    const enemyOrder = remoteTurn?.playerIndex ?? 1;
+    const ownActions = this.queuedActions.map(action => ({ ...action, syncOrder: ownOrder }));
+    const enemyActions = (remoteTurn?.actions || []).map(action => {
+      const caster = this.enemyTeam.find(quve => quve.position === action.casterPosition);
+      const target = this.playerTeam.find(quve => quve.position === action.targetPosition) || getClosestTarget(this.playerTeam);
+      const card = CARDS[action.cardId];
+      return caster && card ? { caster, card: { ...card }, target, isPlayer: false, syncOrder: enemyOrder } : null;
+    }).filter(Boolean);
+    this.logMessage('⚡ Both players resolved. Playing the synchronized turn...');
+    this.setOpponentTurnState(true, true);
+    await this.resolveActions([...ownActions, ...enemyActions], packet.seed);
+  }
+
+  async resolveActions(allActions, seed = null) {
 
     // Sort strictly by Speed & Tiebreaker rules from combat_rules.md
     const timeline = sortActionQueue(allActions);
@@ -251,6 +296,12 @@ export class GameApp {
     this.queuedActions = [];
 
     // Execute actions sequentially with animations
+    let randomState = Number(seed) || 1;
+    const syncedRandom = () => {
+      randomState = (randomState * 16807) % 2147483647;
+      return (randomState - 1) / 2147483646;
+    };
+
     for (const action of timeline) {
       if (!action.caster.isAlive()) continue;
 
@@ -262,7 +313,10 @@ export class GameApp {
       await this.animateLunge(action.caster, action.target);
 
       // Execute card logic
+      const originalRandom = Math.random;
+      if (seed) Math.random = syncedRandom;
       const events = executeCardAction(action, friendlyTeam, enemyTeam);
+      Math.random = originalRandom;
 
       // Process visual effects from events
       events.forEach(evt => {
@@ -318,7 +372,34 @@ export class GameApp {
 
     // Advance to next round
     await this.sleep(800);
-    this.startRound(this.round + 1);
+    if (this.multiplayer) {
+      this.state = 'WAITING_FOR_RIVAL';
+      this.updateHUD();
+      this.multiplayer.completeTurn(this.round);
+      this.logMessage('✓ Turn synchronized. Preparing the next round...');
+    } else {
+      this.startRound(this.round + 1);
+    }
+  }
+
+  applyBattleState(state) {
+    if (!this.multiplayer || !state) return;
+    const rival = state.players.find(player => player.id !== this.multiplayer.playerId);
+    const me = state.players.find(player => player.id === this.multiplayer.playerId);
+    this.setOpponentTurnState(Boolean(rival?.submitted), state.resolving, Boolean(me?.submitted));
+    if (!state.resolving && state.round > this.round && this.state !== 'GAME_OVER') this.startRound(state.round);
+  }
+
+  setOpponentTurnState(rivalSubmitted, resolving = false, meSubmitted = false) {
+    const badge = document.getElementById('battleSyncStatus');
+    if (!badge) return;
+    badge.classList.toggle('ready', rivalSubmitted && !resolving);
+    badge.classList.toggle('resolving', resolving);
+    const label = badge.querySelector('span');
+    if (resolving) label.textContent = 'SYNCED RESOLUTION';
+    else if (rivalSubmitted) label.textContent = 'RIVAL LOCKED IN';
+    else if (meSubmitted) label.textContent = 'WAITING FOR RIVAL';
+    else label.textContent = 'RIVAL SELECTING';
   }
 
   async animateLunge(caster, target) {
@@ -405,6 +486,18 @@ export class GameApp {
     } else {
       endTurnBtn.disabled = true;
       endTurnBtn.classList.add('opacity-50', 'cursor-not-allowed');
+    }
+    const mainLabel = endTurnBtn.querySelector('span');
+    const subLabel = endTurnBtn.querySelector('small');
+    if (this.state === 'WAITING_FOR_RIVAL') {
+      mainLabel.textContent = 'WAITING FOR RIVAL';
+      subLabel.textContent = 'Your actions are locked';
+    } else if (this.state === 'RESOLVING') {
+      mainLabel.textContent = 'RESOLVING TURN';
+      subLabel.textContent = 'Playing synchronized actions';
+    } else {
+      mainLabel.textContent = 'RESOLVE TURN';
+      subLabel.textContent = this.multiplayer ? 'Locks your actions' : 'Enemies will respond';
     }
   }
 
