@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#080b12">
+  <title>Project Quve — Tactical Arena</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700;800;900&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="./styles.css">
+  <link rel="stylesheet" href="./responsive-fixes.css">
+  <link rel="stylesheet" href="./hand-details.css">
+  <link rel="stylesheet" href="./multiplayer.css">
+</head>
+<body>
+  <div class="ambient ambient-one"></div><div class="ambient ambient-two"></div>
+  <header class="topbar">
+    <a class="brand" href="#" aria-label="Project Quve home"><span class="brand-mark"><i></i><b>Q</b></span><span class="brand-copy"><strong>PROJECT QUVE</strong><small>TACTICAL ARENA</small></span></a>
+    <div class="match-hud arena-only hidden" aria-label="Match status"><div class="hud-block round-block"><small>TURN</small><strong id="roundCounter">ROUND 1</strong></div><div class="hud-divider"></div><div class="hud-block energy-block"><small>ENERGY</small><strong><span class="bolt">ϟ</span> <span id="energyCounter">3 / 10</span></strong></div></div>
+    <div class="wallet"><span class="coin">Q</span><span><small>BALANCE</small><strong id="qvcBalance">150 QVC</strong></span></div>
+  </header>
+  <main id="lobbyScreen" class="flow-screen">
+    <section class="lobby-hero">
+      <span class="eyebrow">MULTIPLAYER COMMAND</span>
+      <h1>Find your rival.<br><em>Enter the arena.</em></h1>
+      <p>Create a private duel room, send the invite link, and prepare your squad while your opponent stays hidden.</p>
+      <div class="lobby-grid">
+        <div class="identity-card">
+          <span class="step-label">01 / IDENTIFY</span>
+          <label for="playerName">CALLSIGN</label>
+          <div class="name-field"><span>⌁</span><input id="playerName" maxlength="20" autocomplete="nickname" placeholder="Enter your name" /></div>
+          <p id="lobbyError" class="form-error" aria-live="polite"></p>
+          <button id="createRoomBtn" class="primary-action">CREATE DUEL ROOM <b>➜</b></button>
+        </div>
+        <div class="lobby-status-card">
+          <div><span class="status-pulse"></span><small>NETWORK STATUS</small><strong id="networkStatus">CONNECTING</strong></div>
+          <div class="duel-spec"><span>2</span><p><strong>PLAYER DUEL</strong><small>Private room · 30s lineup timer</small></p></div>
+          <div class="security-note"><span>◆</span><p><strong>HIDDEN LOADOUTS</strong><small>Your rival cannot inspect your lineup before combat.</small></p></div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <main id="roomScreen" class="flow-screen hidden">
+    <section class="room-panel">
+      <div class="room-heading"><div><span class="eyebrow">PRIVATE DUEL / <b id="roomCode">------</b></span><h1>Challenge a rival</h1></div><span class="waiting-chip"><i></i> WAITING FOR PLAYER</span></div>
+      <div class="versus-slots">
+        <article class="player-slot occupied"><div class="player-emblem">Q</div><span>HOST</span><h2 id="hostName">Player</h2><small>READY TO DUEL</small></article>
+        <div class="versus-mark"><small>HEAD TO HEAD</small><strong>VS</strong><span>PRIVATE MATCH</span></div>
+        <article class="player-slot" id="opponentSlot"><div class="player-emblem ghost">?</div><span>CHALLENGER</span><h2>Waiting...</h2><small>SHARE YOUR INVITE</small></article>
+      </div>
+      <div class="invite-box"><div><span class="step-label">02 / INVITE</span><h3>Invite your opponent</h3><p>Anyone with this one-time room link can join your duel.</p></div><div class="invite-field"><input id="inviteLink" readonly /><button id="copyInviteBtn">COPY LINK</button></div><div id="copyFeedback" class="copy-feedback">Link copied to clipboard</div></div>
+    </section>
+  </main>
+
+  <main id="preDuelScreen" class="flow-screen hidden">
+    <section class="preduel-panel">
+      <div class="preduel-top"><div><span class="eyebrow">PRE-DUEL / SQUAD ASSEMBLY</span><h1>Choose your formation</h1><p>Select three Quves. Drag is disabled—click in the order you want them deployed.</p></div><div class="timer-ring"><svg viewBox="0 0 84 84"><circle cx="42" cy="42" r="36"></circle><circle id="timerProgress" cx="42" cy="42" r="36"></circle></svg><strong id="lineupTimer">30</strong><small>SECONDS</small></div></div>
+      <div class="duel-readiness"><span><i class="ready-dot active"></i><b id="yourReadyLabel">YOU / SELECTING</b></span><span class="privacy-pill">◉ OPPONENT LINEUP HIDDEN</span><span><i id="opponentReadyDot" class="ready-dot"></i><b id="opponentReadyLabel">RIVAL / SELECTING</b></span></div>
+      <div id="lineupRoster" class="lineup-roster"></div>
+      <div class="formation-bar"><div><span class="step-label">YOUR FORMATION</span><div id="formationSlots" class="formation-slots"></div></div><button id="readyBtn" class="ready-button" disabled>LOCK IN LINEUP <span>0 / 3</span></button></div>
+    </section>
+  </main>
+
+  <div id="acceptModal" class="hidden modal-backdrop"><div class="accept-modal"><span class="status-pulse"></span><small>CHALLENGE ACCEPTED</small><h2><span id="acceptedName">A rival</span> accepted your invite!</h2><p>Squad assembly starts in</p><strong id="acceptCountdown">3</strong></div></div>
+  <div id="arenaLoader" class="hidden arena-loader"><div class="loader-mark">Q</div><span>SYNCING BATTLEFIELD</span><h2>ENTERING THE ARENA</h2><div class="loader-line"><i></i></div><small>Both lineups locked · Match state secured</small></div>
+
+  <main id="arenaScreen" class="game-shell hidden">
+    <section class="arena-column">
+      <div class="section-heading arena-heading"><div><span class="eyebrow">LIVE COMBAT</span><h1>Shatterpoint Arena</h1></div><div class="target-help"><span class="target-icon">⌖</span><span><strong>SELECT TARGET</strong><small>Click an enemy on the field</small></span></div></div>
+      <div class="arena-frame">
+        <div class="corner corner-tl"></div><div class="corner corner-tr"></div><div class="corner corner-bl"></div><div class="corner corner-br"></div>
+        <div class="team-label team-label-player"><span></span>YOUR SQUAD</div><div class="team-label team-label-enemy">ENEMY SQUAD<span></span></div>
+        <canvas id="battleCanvas" width="920" height="400" aria-label="3 versus 3 battle arena"></canvas>
+        <div id="criticalBanner" class="critical-banner" aria-live="assertive"><small>DEVASTATING STRIKE</small><strong>CRITICAL HIT!</strong></div>
+      </div>
+    </section>
+    <aside class="battle-feed"><div class="feed-header"><div><span class="live-dot"></span><span>COMBAT FEED</span></div><small>LIVE</small></div><div id="battleLog" class="battle-log" aria-live="polite"></div><div class="feed-fade"></div></aside>
+    <section class="command-bar">
+      <div class="queue-title"><span class="queue-icon">≡</span><span><small>ACTION ORDER</small><strong>YOUR QUEUE</strong></span></div>
+      <div id="actionQueueContainer" class="action-queue"><span class="queue-empty"><b>+</b> Choose a card to plan your move</span></div>
+      <button id="endTurnBtn" class="resolve-button"><span>RESOLVE TURN</span><b>➜</b><small>Enemies will respond</small></button>
+    </section>
+    <section class="hand-panel">
+      <div class="hand-header">
+        <div><span class="eyebrow">TACTICAL LOADOUT</span><h2>Your Hand <span id="handCount">0</span></h2></div>
+        <div class="hand-meta"><span><i class="deck-icon">▰</i> DECK <b id="deckCount">15</b></span><span><i class="discard-icon">◇</i> DISCARD <b id="discardCount">0</b></span></div>
+        <div class="beginner-tip"><span>i</span><p><strong>QUICK TIP</strong> Match a card’s element to its Quve for bonus damage.</p></div>
+      </div>
+      <div id="cardsContainer" class="card-hand" aria-label="Cards in hand, grouped by Quve"></div>
+      <div class="card-legend"><span><i class="legend-cost">ϟ</i> COST</span><span><i class="legend-atk">⚔</i> DAMAGE</span><span><i class="legend-def">◆</i> SHIELD</span><span class="legend-note">Click a card to add it to your action order</span></div>
+    </section>
+  </main>
+  <div id="cardTooltip" class="card-tooltip hidden" role="tooltip"></div>
+  <div id="cardDetailModal" class="hidden card-modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="cardDetailName">
+    <div class="card-detail-modal">
+      <button id="cardDetailClose" class="card-detail-close" aria-label="Close card details">×</button>
+      <span id="cardDetailOwner" class="detail-owner"></span>
+      <h3 id="cardDetailName"></h3>
+      <div id="cardDetailStats" class="detail-stats"></div>
+      <p id="cardDetailDescription"></p>
+      <small>RIGHT-CLICKED CARD DETAILS</small>
+    </div>
+  </div>
+  <div id="gameOverModal" class="hidden modal-backdrop"><div class="result-modal"><span class="result-kicker">BATTLE COMPLETE</span><div id="modalTitle" class="result-title">VICTORY</div><div id="modalDesc" class="result-desc">You defeated the enemy team.</div><button id="restartBtn" class="restart-button">ENTER THE ARENA AGAIN <span>↻</span></button></div></div>
+  <script src="/socket.io/socket.io.js"></script>
+  <script type="module" src="./src/multiplayer.js"></script>
+</body>
+</html>

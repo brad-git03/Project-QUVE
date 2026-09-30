@@ -1,0 +1,6 @@
+.game-shell > * { min-width: 0; }
+
+@media (max-width: 700px) {
+  .arena-frame canvas { min-width: 0; }
+  .hand-panel, .command-bar, .action-queue, .card-hand { min-width: 0; max-width: 100%; }
+}
